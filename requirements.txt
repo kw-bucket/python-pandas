@@ -1,0 +1,9 @@
+pymongo
+python-decouple
+pandas
+pytz
+google-cloud-storage
+oauth2client
+boto3
+pybase64
+httplib2==0.15.0
