@@ -9,8 +9,6 @@ from kw.service.etl.loader import Loader
 from kw.service.etl.transformer import Transformer
 
 class ETL:
-  datetime_fmt = '%Y-%m-%dT%H:%M:%S.%f'
-
   def __init__(self, start_datetime: datetime, end_datetime: datetime, load_bucket: str) -> None:
     extractor = Extractor()
     data_dicts = extractor.extract_data_dicts(start_datetime, end_datetime)
@@ -94,12 +92,39 @@ class ETL:
     table_name = 'decision'
     schema='schema/decision/decision_schema.json'
     schema_cols = extract_schema_columns(schema)
-
     df = self.transformer.df.reindex(columns=schema_cols)
-    df.request_time = pd.to_datetime(df.request_time).dt.strftime(self.datetime_fmt)
-    df.decision_time = pd.to_datetime(df.decision_time).dt.strftime(self.datetime_fmt)
 
     self.loader.load(df, schema, table_name)
+    self.__print_hr()
+
+  def decision_input_data(self) -> None:
+    _df = self.transformer.frame_obj(record_path=['decision_input_data'])
+
+    # decision_input_data
+    #.----------.----------.----------.----------.----------.
+    root_table_name = 'decision_input_data'
+    root_schema = 'schema/decision_input_data/decision_input_data_schema.json'
+    root_schema_cols = extract_schema_columns(root_schema)
+    root_df = _df.reindex(columns=root_schema_cols)
+
+    self.__force_int(root_df, columns=['current_round_number'])
+
+    # decision_input_data_sources
+    #.----------.----------.----------.----------.----------.
+    sources_table_name = 'decision_input_data_sources'
+    sources_schema = 'schema/decision_input_data/decision_input_data_sources_schema.json'
+    sources_df = self.transformer.frame_nested_list(
+      df=_df,
+      key='sources',
+      schema=sources_schema,
+    )
+    if not sources_df.empty:
+      sources_df['source_name'] = sources_df['source_name'].str.join('|')
+
+    self.__force_int(sources_df, columns=['round'])
+
+    self.loader.load(root_df, root_schema, root_table_name)
+    self.loader.load(sources_df, sources_schema, sources_table_name)
     self.__print_hr()
 
   #.decision_input_data_decision_output_data
@@ -129,7 +154,7 @@ class ETL:
     df.DATETIME = pd.to_datetime(df.DATETIME) \
       .dt.tz_localize('Asia/Bangkok') \
       .dt.tz_convert('UTC') \
-      .dt.strftime(self.datetime_fmt)
+      .dt.strftime('%Y-%m-%dT%H:%M:%S.%f')
 
     self.__force_int(df, columns=['AGE', 'AGE_WHEN_APPLY', 'TRUE_RELATION_MONTH', 'WHITELIST_FLAG', 'TOTAL_BAD_BILL'])
 
@@ -288,9 +313,10 @@ class ETL:
     schema_cols = extract_schema_columns(schema)
 
     df = pd.DataFrame(self.transformer.data_dicts)
-    df['key_request_id'] = df['_id']
-    df['phone_metadata'] = df['decision_input_data'].map(lambda i: json.dumps(i.get('phone_metadata')))
-    df = df[['key_request_id', 'phone_metadata']].reindex(columns=schema_cols)
+    if not df.empty:
+      df['key_request_id'] = df['_id']
+      df['phone_metadata'] = df['decision_input_data'].map(lambda i: json.dumps(i.get('phone_metadata')))
+      df = df[['key_request_id', 'phone_metadata']].reindex(columns=schema_cols)
 
     self.loader.load(df, schema, table_name)
     self.__print_hr()

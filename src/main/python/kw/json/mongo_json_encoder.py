@@ -8,5 +8,5 @@ class MongoJSONEncoder(json.JSONEncoder):
     if isinstance(obj, ObjectId):
       return str(obj)
     if isinstance(obj, datetime):
-      return obj.astimezone().strftime("%Y-%m-%dT%H:%M:%S.%f%Z")
+      return obj.astimezone().strftime("%Y-%m-%dT%H:%M:%S.%f")
     return json.JSONEncoder.default(self, obj)
